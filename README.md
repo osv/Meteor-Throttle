@@ -28,6 +28,10 @@ Optionally add an [Accounts Throttling](https://atmospherejs.com/zeroasterisk/th
 
 *(NOTE for Throttle Accounts, you have to Configure it, see that package's README)*
 
+## Version
+
+Used `rawCollection` from `Meteor@1.0.4`, for early Meteor you can use this package <= v0.3.0
+
 ## Configuration
 
     if (Meteor.isServer) {
