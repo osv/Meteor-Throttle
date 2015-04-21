@@ -87,7 +87,7 @@ if (Meteor.isServer) {
     if (!_.isNumber(expireInMS)) {
       expireInMS = 180000; // 3 min, default expire timestamp
     }
-    var expireEpoch = this.epoch() + expireInMS;
+    var expireEpoch = +new Date() + expireInMS;
     if (Throttle.debug) {
       console.log('Throttle.set(', key, expireInMS, ')');
     }
@@ -102,16 +102,10 @@ if (Meteor.isServer) {
 
   // remove expired records
   Throttle.purge = function() {
-    var now = this.epoch();
-    var raw = this.rawCollection();
+    var now = +new Date(),
+        raw = this.rawCollection();
     Meteor.wrapAsync (raw.remove, raw) ({ expire: {$lt: now } });
   };
-
-  // simple tool to get a standardized epoch/timestamp
-  Throttle.epoch = function() {
-    var now = new Date;
-    return now.getTime();
-  }
 
   // expose some methods for easy access into Throttle from the client
   Meteor.methods({
