@@ -27,7 +27,7 @@ if (Meteor.isServer) {
     if (this.debug) {
       console.log('Throttle.setDebugMode(' + bool + ')');
     }
-  }
+  };
 
   // Access to set the Throttle.debug Boolean
   Throttle.setScope = function(scope) {
@@ -36,7 +36,7 @@ if (Meteor.isServer) {
     if (this.debug) {
       console.log('Throttle.setScope(' + scope + ')');
     }
-  }
+  };
 
   // Modify the key based on Throttle.scope
   Throttle.keyScope = function(key) {
@@ -52,7 +52,7 @@ if (Meteor.isServer) {
       }
     }
     return key;
-  }
+  };
 
   // check to see if we've done something too many times
   // if we "pass" then go ahead and set... (shortcut)
@@ -60,7 +60,7 @@ if (Meteor.isServer) {
     if (!this.check(key, allowed)) {
       return false;
     }
-    return this.set(key, expireInMS)
+    return this.set(key, expireInMS);
   };
 
   // check to see if we've done something too many times
@@ -77,9 +77,8 @@ if (Meteor.isServer) {
     var raw    = this.rawCollection(),
         cursor = Meteor.wrapAsync (raw.find, raw) ({ key: key }),
         count  = Meteor.wrapAsync (cursor.count, cursor) ();
-    console.log('count', count);
     return (count < allowed);
-  }
+  };
 
   // create a record with
   Throttle.set = function(key, expireInMS) {
