@@ -17,5 +17,7 @@ Package.onUse(function (api) {
 Package.onTest(function (api) {
   api.use("zeroasterisk:throttle");
   api.use('tinytest@1.0.0');
+  api.use('underscore');
+  api.use('meteor');
   api.addFiles('throttle_tests.js', ['client', 'server']);
 });
