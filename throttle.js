@@ -73,7 +73,12 @@ if (Meteor.isServer) {
     if (Throttle.debug) {
       console.log('Throttle.check(', key, allowed, ')');
     }
-    return (this.find({ key: key }).count() < allowed);
+
+    var raw    = this.rawCollection(),
+        cursor = Meteor.wrapAsync (raw.find, raw) ({ key: key }),
+        count  = Meteor.wrapAsync (cursor.count, cursor) ();
+    console.log('count', count);
+    return (count < allowed);
   }
 
   // create a record with
@@ -86,7 +91,9 @@ if (Meteor.isServer) {
     if (Throttle.debug) {
       console.log('Throttle.set(', key, expireInMS, ')');
     }
-    this.insert({
+    // use raw collection, avoid minimongo
+    var raw = this.rawCollection();
+    Meteor.wrapAsync (raw.insert, raw) ({
       key: key,
       expire: expireEpoch
     });
@@ -95,7 +102,9 @@ if (Meteor.isServer) {
 
   // remove expired records
   Throttle.purge = function() {
-    this.remove({ expire: {$lt: this.epoch() } });
+    var now = this.epoch();
+    var raw = this.rawCollection();
+    Meteor.wrapAsync (raw.remove, raw) ({ expire: {$lt: now } });
   };
 
   // simple tool to get a standardized epoch/timestamp
