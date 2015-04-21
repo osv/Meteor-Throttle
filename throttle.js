@@ -13,6 +13,7 @@ if (Meteor.isServer) {
 
   Throttle = new Meteor.Collection('throttles');
   Throttle._ensureIndex({key: 1});
+  Throttle._ensureIndex({expire: 1}); // we use query for remove
   Throttle.debug = false;
   // scope: normal, user
   //   if set to "user" all keys will become user specific not global
