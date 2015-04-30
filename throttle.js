@@ -11,14 +11,56 @@
  */
 if (Meteor.isServer) {
 
-  Throttle = new Meteor.Collection('throttles');
-  Throttle._ensureIndex({key: 1});
-  Throttle._ensureIndex({expire: 1}); // we use query for remove
+  Throttle = {};
+
+  // have we run setup yet?
+  Throttle.isSetup = false;
+  // collection name (null for single-node-app, RAM only, no MongoDB)
+  Throttle._collectionName = 'throttles';
+  // debug mode
   Throttle.debug = false;
   // scope: normal, user
   //   if set to "user" all keys will become user specific not global
   //   (on server, based on Meteor.userId())
   Throttle.scope = 'normal';
+  // enable "helper" clientside methods
+  Throttle.isMethodhelpersAllowed = true;
+
+  // Access to set the Throttle.debug Boolean
+  Throttle.setup = function() {
+    if (this.isSetup) {
+      return;
+    }
+    this.isSetup = true;
+    if (this._collectionName) {
+      this._collection = new Meteor.Collection(this._collectionName);
+      this._collection._ensureIndex({key: 1});
+      this._collection._ensureIndex({expire: 1}); // we use query for remove
+      if(typeof this._collection.rawCollection === 'function') {
+        this._rawCollection = this._collection.rawCollection();
+      }
+    } else {
+      this._collection = new Meteor.Collection(null);
+    }
+  };
+
+  // clear existing setup (allowing for changing _collectionName)
+  Throttle.resetSetup = function() {
+    this.isSetup = false;
+    this._rawCollection = undefined;
+  }
+
+  // Access to set the Throttle._collectionName string
+  //   see setup()
+  Throttle.setCollection = function(name) {
+    check(name, Match.OneOf(String, null));
+    this._collectionName = name;
+    if (this.debug) {
+      console.log('Throttle.setCollection(' + name + ')');
+    }
+    // reset setup() just in case it's already been called
+    this.resetSetup();
+  }
 
   // Access to set the Throttle.debug Boolean
   Throttle.setDebugMode = function(bool) {
@@ -30,11 +72,22 @@ if (Meteor.isServer) {
   }
 
   // Access to set the Throttle.debug Boolean
+  //   see keyScope()
   Throttle.setScope = function(scope) {
     check(scope, String);
     this.scope = scope;
     if (this.debug) {
       console.log('Throttle.setScope(' + scope + ')');
+    }
+  }
+
+  // Access to set the Throttle.isMethodhelpersAllowed Boolean
+  //   see checkAllowedMethods()
+  Throttle.setMethodsAllowed = function(bool) {
+    check(bool, Boolean);
+    this.isMethodhelpersAllowed = bool;
+    if (this.debug) {
+      console.log('Throttle.setMethodsAllowed(' + bool + ')');
     }
   }
 
@@ -64,7 +117,9 @@ if (Meteor.isServer) {
   };
 
   // check to see if we've done something too many times
+  //   if more than allowed = false
   Throttle.check = function(key, allowed) {
+    this.setup();
     Throttle.purge();
     key = Throttle.keyScope(key);
     if (!_.isNumber(allowed)) {
@@ -73,16 +128,20 @@ if (Meteor.isServer) {
     if (Throttle.debug) {
       console.log('Throttle.check(', key, allowed, ')');
     }
-
-    var raw    = this.rawCollection(),
-        cursor = Meteor.wrapAsync (raw.find, raw) ({ key: key }),
-        count  = Meteor.wrapAsync (cursor.count, cursor) ();
-    console.log('count', count);
-    return (count < allowed);
+    if (this._rawCollection) {
+      // use raw collection, avoid minimongo
+      var raw    = this._rawCollection,
+          cursor = Meteor.wrapAsync (raw.find, raw) ({ key: key }),
+          count  = Meteor.wrapAsync (cursor.count, cursor) ();
+      return (count < allowed);
+    } else {
+      return (this._collection.find({ key: key }).count() < allowed);
+    }
   }
 
   // create a record with
   Throttle.set = function(key, expireInMS) {
+    this.setup();
     key = Throttle.keyScope(key);
     if (!_.isNumber(expireInMS)) {
       expireInMS = 180000; // 3 min, default expire timestamp
@@ -91,20 +150,31 @@ if (Meteor.isServer) {
     if (Throttle.debug) {
       console.log('Throttle.set(', key, expireInMS, ')');
     }
-    // use raw collection, avoid minimongo
-    var raw = this.rawCollection();
-    Meteor.wrapAsync (raw.insert, raw) ({
-      key: key,
-      expire: expireEpoch
-    });
+
+    if (this._rawCollection) {
+      var raw = this._rawCollection;
+      Meteor.wrapAsync (raw.insert, raw) ({
+        key: key,
+        expire: expireEpoch
+      });
+    } else {
+      this._collection.insert({
+        key: key,
+        expire: expireEpoch
+      });
+    }
     return true;
   };
 
   // remove expired records
   Throttle.purge = function() {
-    var now = this.epoch();
-    var raw = this.rawCollection();
-    Meteor.wrapAsync (raw.remove, raw) ({ expire: {$lt: now } });
+    this.setup();
+    if (this._rawCollection) {
+      var raw = this._rawCollection;
+      Meteor.wrapAsync (raw.remove, raw) ({ expire: {$lt: this.epoch() } });
+    }
+    else
+      this._collection.remove({ expire: {$lt: this.epoch() } });
   };
 
   // simple tool to get a standardized epoch/timestamp
@@ -113,25 +183,38 @@ if (Meteor.isServer) {
     return now.getTime();
   }
 
+  // Rise exception if disabled client-side methods
+  //   see setMethodsAllowed()
+  Throttle.checkAllowedMethods = function()  {
+    if (Throttle.isMethodhelpersAllowed) {
+      return true;
+    }
+    throw new Meteor.Error(403, 'Client-side throttle disabled');
+  };
+
   // expose some methods for easy access into Throttle from the client
   Meteor.methods({
     'throttle': function(key, allowed, expireInMS) {
+      Throttle.checkAllowedMethods();
       check(key, String);
       check(allowed, Match.Integer);
       check(expireInMS, Match.Integer);
       return Throttle.checkThenSet(key, allowed, expireInMS);
     },
     'throttle-set': function(key, expireInMS) {
+      Throttle.checkAllowedMethods();
       check(key, String);
       check(expireInMS, Match.Integer);
       return Throttle.set(key, expireInMS);
     },
     'throttle-check': function(key, allowed) {
+      Throttle.checkAllowedMethods();
       check(key, String);
       check(allowed, Match.Integer);
       return Throttle.check(key, allowed);
     },
     'throttle-debug': function(bool) {
+      Throttle.checkAllowedMethods();
       return Throttle.setDebugMode(bool);
     },
   });
